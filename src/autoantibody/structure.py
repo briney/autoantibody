@@ -5,7 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from Bio.PDB import NeighborSearch, PDBParser
+from Bio.PDB.NeighborSearch import NeighborSearch
+from Bio.PDB.PDBParser import PDBParser
 
 from autoantibody.models import THREE_TO_ONE, Mutation
 

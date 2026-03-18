@@ -26,6 +26,7 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.0",
     "pre-commit>=3.0",
+    "types-PyYAML>=6.0",
 ]
 
 [project.urls]
@@ -69,6 +70,16 @@ python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "Bio.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# structure.py calls extensively into untyped BioPython; no stubs available
+module = "autoantibody.structure"
+disallow_untyped_calls = false
+warn_return_any = false
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/autoantibody"]
