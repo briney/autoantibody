@@ -12,7 +12,13 @@ requires-python = ">=3.12"
 authors = [
     { name = "Bryan Briney", email = "briney@scripps.edu" },
 ]
-dependencies = []
+dependencies = [
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+    "biopython>=1.80",
+    "numpy>=1.24",
+    "typer>=0.9",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -45,6 +51,10 @@ select = [
     "SIM",  # flake8-simplify
     "TCH",  # flake8-type-checking
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Pydantic models need runtime access to types like datetime and Path
+"src/autoantibody/models.py" = ["TCH003"]
 
 [tool.ruff.lint.isort]
 force-single-line = false
