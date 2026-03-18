@@ -1,0 +1,19 @@
+# Trastuzumab / HER2 optimization campaign
+# 1N8Z chains: A=VH (214 res), B=VL (220 res), C=HER2 (581 res)
+pdb: tests/data/1N8Z.pdb
+heavy_chain: A
+light_chain: B
+antigen_chains:
+  - C
+output: runs/trastuzumab_her2_001
+campaign_id: trastuzumab_her2_001
+frozen_positions: []
+
+# Optional: scorer preferences (agent uses these as hints)
+scorer_preferences:
+  fast_screening:
+    - evoef
+    - stabddg
+    - graphinity
+  oracle: flex_ddg
+  stability_filter: true
