@@ -118,24 +118,24 @@ def main() -> None:
     pdb_path = Path(sys.argv[1]).resolve()
     mutation = Mutation.parse(sys.argv[2])
 
-    errors = validate_mutation_against_structure(pdb_path, mutation)
-    if errors:
-        result = ToolResult(
-            status="error",
-            error_message="; ".join(errors),
-            scorer_name="evoef",
-        )
-        print(result.model_dump_json(indent=2))
-        sys.exit(1)
-
-    evoef = find_evoef_binary()
     t0 = time.monotonic()
+    try:
+        errors = validate_mutation_against_structure(pdb_path, mutation)
+        if errors:
+            result = ToolResult(
+                status="error",
+                error_message="; ".join(errors),
+                scorer_name="evoef",
+            )
+            print(result.model_dump_json(indent=2))
+            sys.exit(1)
 
-    with tempfile.TemporaryDirectory(prefix="evoef_") as tmpdir:
-        wd = Path(tmpdir)
-        shutil.copy2(pdb_path, wd / pdb_path.name)
+        evoef = find_evoef_binary()
 
-        try:
+        with tempfile.TemporaryDirectory(prefix="evoef_") as tmpdir:
+            wd = Path(tmpdir)
+            shutil.copy2(pdb_path, wd / pdb_path.name)
+
             repaired = run_evoef_repair(evoef, pdb_path, wd)
 
             # Compute binding energy for wild-type
@@ -160,13 +160,15 @@ def main() -> None:
                 wall_time_s=round(time.monotonic() - t0, 2),
                 scorer_name="evoef",
             )
-        except Exception as e:
-            result = ToolResult(
-                status="error",
-                error_message=str(e),
-                wall_time_s=round(time.monotonic() - t0, 2),
-                scorer_name="evoef",
-            )
+    except SystemExit:
+        raise
+    except Exception as e:
+        result = ToolResult(
+            status="error",
+            error_message=str(e),
+            wall_time_s=round(time.monotonic() - t0, 2),
+            scorer_name="evoef",
+        )
 
     print(result.model_dump_json(indent=2))
     sys.exit(0 if result.status == "ok" else 1)

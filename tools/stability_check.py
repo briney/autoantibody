@@ -105,18 +105,18 @@ def main() -> None:
     pdb_path = args.pdb_path.resolve()
     mutation = Mutation.parse(args.mutation)
 
-    errors = validate_mutation_against_structure(pdb_path, mutation)
-    if errors:
-        result = ToolResult(
-            status="error",
-            error_message="; ".join(errors),
-            scorer_name="proteinmpnn_stability",
-        )
-        print(result.model_dump_json(indent=2))
-        sys.exit(1)
-
     t0 = time.monotonic()
     try:
+        errors = validate_mutation_against_structure(pdb_path, mutation)
+        if errors:
+            result = ToolResult(
+                status="error",
+                error_message="; ".join(errors),
+                scorer_name="proteinmpnn_stability",
+            )
+            print(result.model_dump_json(indent=2))
+            sys.exit(1)
+
         stability_ddg = run_stability_check(pdb_path, mutation, args.chain)
         result = ToolResult(
             status="ok",
@@ -124,6 +124,8 @@ def main() -> None:
             wall_time_s=round(time.monotonic() - t0, 2),
             scorer_name="proteinmpnn_stability",
         )
+    except SystemExit:
+        raise
     except Exception as e:
         result = ToolResult(
             status="error",

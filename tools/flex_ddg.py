@@ -343,21 +343,21 @@ def main() -> None:
     pdb_path = args.pdb_path.resolve()
     mutation = Mutation.parse(args.mutation)
 
-    errors = validate_mutation_against_structure(pdb_path, mutation)
-    if errors:
-        r = ToolResult(
-            status="error",
-            error_message="; ".join(errors),
-            scorer_name="flex_ddg",
-        )
-        print(r.model_dump_json(indent=2))
-        sys.exit(1)
-
     t0 = time.monotonic()
     tmpdir_obj = tempfile.TemporaryDirectory(prefix="flex_ddg_")
     work_dir = Path(tmpdir_obj.name)
 
     try:
+        errors = validate_mutation_against_structure(pdb_path, mutation)
+        if errors:
+            r = ToolResult(
+                status="error",
+                error_message="; ".join(errors),
+                scorer_name="flex_ddg",
+            )
+            print(r.model_dump_json(indent=2))
+            sys.exit(1)
+
         scores = run_flex_ddg(
             pdb_path,
             mutation,
@@ -374,6 +374,8 @@ def main() -> None:
             wall_time_s=round(time.monotonic() - t0, 2),
             scorer_name="flex_ddg",
         )
+    except SystemExit:
+        raise
     except Exception as e:
         result = ToolResult(
             status="error",

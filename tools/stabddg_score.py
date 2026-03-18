@@ -91,20 +91,20 @@ def main() -> None:
         print("Provide a mutation or --batch file", file=sys.stderr)
         sys.exit(1)
 
-    # Validate all mutations
-    for m in mutations:
-        errors = validate_mutation_against_structure(pdb_path, m)
-        if errors:
-            result = ToolResult(
-                status="error",
-                error_message=f"Mutation {m}: {'; '.join(errors)}",
-                scorer_name="stabddg",
-            )
-            print(result.model_dump_json(indent=2))
-            sys.exit(1)
-
     t0 = time.monotonic()
     try:
+        # Validate all mutations
+        for m in mutations:
+            errors = validate_mutation_against_structure(pdb_path, m)
+            if errors:
+                result = ToolResult(
+                    status="error",
+                    error_message=f"Mutation {m}: {'; '.join(errors)}",
+                    scorer_name="stabddg",
+                )
+                print(result.model_dump_json(indent=2))
+                sys.exit(1)
+
         ddg_values = run_stabddg(pdb_path, mutations, ab_chains, ag_chains)
 
         if len(mutations) == 1:
@@ -119,6 +119,8 @@ def main() -> None:
             wall_time_s=round(time.monotonic() - t0, 2),
             scorer_name="stabddg",
         )
+    except SystemExit:
+        raise
     except Exception as e:
         result = ToolResult(
             status="error",
