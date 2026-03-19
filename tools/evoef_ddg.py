@@ -2,11 +2,16 @@
 """EvoEF ddG proxy scorer.
 
 Usage:
-    python tools/evoef_ddg.py <pdb_path> <mutation>
+    python tools/evoef_ddg.py <pdb_path> <mutation> [--split AB_CD]
 
 Arguments:
     pdb_path: Path to the input PDB structure.
     mutation:  Mutation string (e.g., H:52:S:Y).
+
+Options:
+    --split SPEC  Chain split for ComputeBinding: partner1_partner2
+                  (e.g., HL_AB for antibody H+L vs antigen A+B).
+                  Required for structures with >2 chains.
 
 Output (stdout):
     JSON with status, scores.ddg, scorer_name, artifacts, wall_time_s.
@@ -16,7 +21,7 @@ Environment:
 
 Example:
     EVOEF_BINARY=/opt/evoef/EvoEF python tools/evoef_ddg.py \
-        runs/cmp_001/input/1N8Z.pdb H:52:S:Y
+        runs/cmp_001/input/1N8Z.pdb H:52:S:Y --split HL_AB
 """
 
 from __future__ import annotations
@@ -102,31 +107,71 @@ def run_evoef_compute_binding(
     evoef: Path,
     pdb_path: Path,
     work_dir: Path,
+    split: str | None = None,
 ) -> float:
-    """Run ComputeBinding and return the binding energy."""
+    """Run ComputeBinding and return the binding energy.
+
+    Args:
+        evoef: Path to EvoEF binary.
+        pdb_path: Path to PDB file.
+        work_dir: Working directory.
+        split: Chain split for multi-chain complexes (e.g., "HL,AB").
+               EvoEF format: comma-separated groups.
+    """
+    cmd = [str(evoef), "--command=ComputeBinding", f"--pdb={pdb_path.name}"]
+    if split:
+        cmd.append(f"--split={split}")
+
     result = subprocess.run(
-        [str(evoef), "--command=ComputeBinding", f"--pdb={pdb_path.name}"],
+        cmd,
         cwd=work_dir,
         capture_output=True,
         text=True,
         check=True,
     )
+    # With --split, EvoEF outputs a single binding energy block.
+    # Without --split and >2 chains, it outputs ALL chain pairs;
+    # we parse the last "Total" line (which is always the largest pair
+    # for default output, but with --split it's the only one).
+    total_energy = None
     for line in result.stdout.splitlines():
-        if "Total" in line and "=" in line:
+        if "Total" in line and "=" in line and "time" not in line.lower():
             parts = line.split("=")
-            return float(parts[-1].strip())
+            total_energy = float(parts[-1].strip())
+            if split:
+                return total_energy  # Only one block with --split
+    if total_energy is not None:
+        return total_energy
     raise ValueError("Could not parse binding energy from EvoEF output")
 
 
 def main() -> None:
     maybe_relaunch_in_container("evoef")
 
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <pdb_path> <mutation>", file=sys.stderr)
-        sys.exit(1)
+    import argparse
 
-    pdb_path = Path(sys.argv[1]).resolve()
-    mutation = Mutation.parse(sys.argv[2])
+    ap = argparse.ArgumentParser(description="EvoEF binding ddG scorer")
+    ap.add_argument("pdb_path", type=Path)
+    ap.add_argument("mutation", type=str)
+    ap.add_argument(
+        "--split",
+        type=str,
+        default=None,
+        help="Chain split: partner1_partner2 (e.g., HL_AB)",
+    )
+    args = ap.parse_args()
+
+    pdb_path = args.pdb_path.resolve()
+    mutation = Mutation.parse(args.mutation)
+
+    # Convert underscore split notation (HL_AB) to EvoEF comma format (HL,AB)
+    evoef_split = None
+    if args.split:
+        parts = args.split.split("_")
+        if len(parts) != 2:
+            print("--split must be partner1_partner2 (e.g., HL_AB)", file=sys.stderr)
+            sys.exit(1)
+        evoef_split = f"{parts[0]},{parts[1]}"
 
     t0 = time.monotonic()
     try:
@@ -149,11 +194,15 @@ def main() -> None:
             repaired = run_evoef_repair(evoef, pdb_path, wd)
 
             # Compute binding energy for wild-type
-            wt_binding = run_evoef_compute_binding(evoef, repaired, wd)
+            wt_binding = run_evoef_compute_binding(
+                evoef, repaired, wd, split=evoef_split,
+            )
 
             # Build mutant and compute its binding energy
             mutant_pdb = run_evoef_build_mutant(evoef, repaired, mutation, wd)
-            mut_binding = run_evoef_compute_binding(evoef, mutant_pdb, wd)
+            mut_binding = run_evoef_compute_binding(
+                evoef, mutant_pdb, wd, split=evoef_split,
+            )
 
             ddg = mut_binding - wt_binding
             scores: dict[str, float] = {

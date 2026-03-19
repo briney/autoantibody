@@ -74,7 +74,7 @@ model_params:
   tanh: True
   update_coords: True
   scheduler: CosineAnnealing
-  norm_nodes: null
+  norm_nodes: GraphNorm
 
 trainer_params:
   gpus: 0

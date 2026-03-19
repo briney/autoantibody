@@ -59,8 +59,28 @@ RUN pip install --no-cache-dir \
     torch-geometric==1.6.3 \
     pytorch-lightning==1.2.10
 
+# torch_geometric 1.6.3 imports `google_drive_downloader` (underscores) but the
+# installed package `googledrivedownloader` 1.1.0 provides module
+# `googledrivedownloader` (no underscores).  Create a compatibility shim.
+RUN python -c "\
+import pathlib, site; \
+sp = pathlib.Path(site.getsitepackages()[0]); \
+pkg = sp / 'google_drive_downloader'; \
+pkg.mkdir(exist_ok=True); \
+(pkg / '__init__.py').write_text( \
+    'from googledrivedownloader import download_file_from_google_drive\n' \
+    'class GoogleDriveDownloader:\n' \
+    '    download_file_from_google_drive = staticmethod(download_file_from_google_drive)\n' \
+)"
+
 # --- Root: final setup ---
 USER root
+
+# Patch Graphinity's epoch_metrics to handle single-sample inference.
+# pearsonr requires >=2 data points; return NaN for single-sample runs.
+RUN sed -i 's/pearson_corr = pearsonr(ys, preds)/pearson_corr = pearsonr(ys, preds) if len(ys) >= 2 else (float("nan"), float("nan"))/' \
+    /opt/graphinity/src/ddg_regression/models/egnn_model.py
+
 WORKDIR /app
 
 # Copy tool scripts (standalone, no autoantibody install needed)

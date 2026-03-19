@@ -60,7 +60,11 @@ def _parse_stabddg_csv(csv_path: Path, mutation_str: str) -> float:
     with open(csv_path) as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if row["Mutation"] == mutation_str:
+            # StaB-ddG writes the Mutation column as a Python list repr,
+            # e.g. "['SH52Y']" instead of bare "SH52Y". Strip brackets
+            # and quotes for comparison.
+            csv_mutation = row["Mutation"].strip("[]' \"")
+            if csv_mutation == mutation_str:
                 return float(row["pred_1"])
     raise ValueError(f"Mutation {mutation_str} not found in StaB-ddG output")
 
