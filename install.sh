@@ -3,12 +3,14 @@
 #
 # Usage:
 #   ./install.sh              # Install everything (required + recommended)
-#   ./install.sh --minimal    # Required tools only (EvoEF, Rosetta Docker, ablms)
+#   ./install.sh --minimal    # Required tools only (minimal Docker containers)
 #   ./install.sh --skip-docker  # Skip Docker image pulls
 #
 # Environment variables:
-#   TOOLS_DIR     — Where to install external tools (default: ~/tools/autoantibody)
 #   CUDA_VERSION  — CUDA version for PyTorch (default: auto-detected)
+#
+# All scoring tools (evoef, ablms, graphinity, stabddg, proteinmpnn, flex_ddg)
+# run inside Docker containers — they are NOT installed locally.
 
 set -euo pipefail
 
@@ -16,7 +18,6 @@ set -euo pipefail
 # Configuration
 # ------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TOOLS_DIR="${TOOLS_DIR:-$HOME/tools/autoantibody}"
 VENV_DIR="${SCRIPT_DIR}/.venv"
 
 MINIMAL=false
@@ -63,17 +64,6 @@ ok "Python $PYTHON_VERSION"
 
 command_exists git || fail "git not found"
 ok "git"
-
-command_exists make || fail "make not found (install build-essential)"
-ok "make"
-
-if command_exists g++; then
-    ok "g++"
-elif command_exists gcc; then
-    ok "gcc"
-else
-    fail "C/C++ compiler not found (install build-essential)"
-fi
 
 if ! $SKIP_DOCKER; then
     command_exists docker || fail "docker not found"
@@ -166,96 +156,7 @@ fi
 echo ""
 
 # ------------------------------------------------------------------
-# 4. ablms (antibody language models)
-# ------------------------------------------------------------------
-info "Installing ablms"
-
-if python -c "import ablms" &>/dev/null; then
-    ok "ablms already installed"
-else
-    pip install git+https://github.com/briney/ablms.git --quiet
-    ok "ablms installed"
-fi
-echo ""
-
-# ------------------------------------------------------------------
-# 5. Graphinity (Ab-Ag ddG scorer — clone only)
-# ------------------------------------------------------------------
-info "Setting up Graphinity"
-
-GRAPHINITY_DIR="$TOOLS_DIR/graphinity"
-
-if [ -d "$GRAPHINITY_DIR" ]; then
-    ok "Graphinity already cloned at $GRAPHINITY_DIR"
-else
-    git clone https://github.com/oxpig/Graphinity.git "$GRAPHINITY_DIR"
-    ok "Graphinity cloned"
-fi
-
-# Graphinity is a script-based project (no setup.py/pyproject.toml).
-# It requires Python 3.7 + PyTorch 1.8 + PyTorch Geometric, so it cannot
-# be installed into the main venv. The tool wrapper will call it via
-# subprocess in its own conda environment.
-warn "Graphinity needs its own conda env (Python 3.7 + PyTorch 1.8)."
-warn "  To set up: conda env create -f $GRAPHINITY_DIR/graphinity_env_cuda102.yaml"
-echo ""
-
-# ------------------------------------------------------------------
-# 6. EvoEF (fast proxy scorer)
-# ------------------------------------------------------------------
-info "Installing EvoEF"
-
-mkdir -p "$TOOLS_DIR"
-EVOEF_DIR="$TOOLS_DIR/evoef"
-
-if [ -x "$EVOEF_DIR/EvoEF" ]; then
-    ok "EvoEF already built at $EVOEF_DIR/EvoEF"
-else
-    if [ -d "$EVOEF_DIR" ]; then
-        warn "EvoEF directory exists but binary not found — rebuilding"
-    else
-        git clone https://github.com/tommyhuangthu/EvoEF.git "$EVOEF_DIR"
-        ok "EvoEF cloned"
-    fi
-    (cd "$EVOEF_DIR" && g++ -O3 -ffast-math -o EvoEF src/*.cpp 2>&1 | tail -3)
-    if [ -x "$EVOEF_DIR/EvoEF" ]; then
-        ok "EvoEF built successfully"
-    else
-        fail "EvoEF build failed"
-    fi
-fi
-
-EVOEF_BINARY="$EVOEF_DIR/EvoEF"
-ok "EVOEF_BINARY=$EVOEF_BINARY"
-echo ""
-
-# ------------------------------------------------------------------
-# 7. StaB-ddG (recommended ML scorer)
-# ------------------------------------------------------------------
-if ! $MINIMAL; then
-    info "Installing StaB-ddG"
-
-    STABDDG_DIR="$TOOLS_DIR/stabddg"
-
-    if python -c "import stabddg" &>/dev/null; then
-        ok "StaB-ddG already installed"
-    else
-        if [ ! -d "$STABDDG_DIR" ]; then
-            git clone https://github.com/LDeng0205/StaB-ddG.git "$STABDDG_DIR"
-            ok "StaB-ddG cloned"
-        else
-            ok "StaB-ddG directory exists"
-        fi
-        # Install StaB-ddG dependencies (from environment.yaml) and the package
-        pip install tqdm scipy pandas scikit-learn wandb --quiet
-        pip install -e "$STABDDG_DIR" --quiet 2>/dev/null || warn "StaB-ddG pip install failed — may need manual setup"
-        ok "StaB-ddG set up at $STABDDG_DIR"
-    fi
-    echo ""
-fi
-
-# ------------------------------------------------------------------
-# 8. Docker images (containerized scoring tools)
+# 4. Docker images (containerized scoring tools)
 # ------------------------------------------------------------------
 if ! $SKIP_DOCKER; then
     info "Building containerized scoring tools"
@@ -278,7 +179,7 @@ if ! $SKIP_DOCKER; then
 fi
 
 # ------------------------------------------------------------------
-# 9. Test data
+# 5. Test data
 # ------------------------------------------------------------------
 info "Downloading test data"
 
@@ -294,32 +195,7 @@ fi
 echo ""
 
 # ------------------------------------------------------------------
-# 10. Environment setup
-# ------------------------------------------------------------------
-info "Environment configuration"
-
-ENV_FILE="$SCRIPT_DIR/.env"
-
-# Write .env file with tool paths
-cat > "$ENV_FILE" <<ENVEOF
-# autoantibody tool paths — source this or add to your shell profile
-export EVOEF_BINARY=$EVOEF_BINARY
-export STABDDG_DIR=$TOOLS_DIR/stabddg
-export GRAPHINITY_DIR=$TOOLS_DIR/graphinity
-export AUTOANTIBODY_TOOLS_DIR=$TOOLS_DIR
-ENVEOF
-ok "Wrote $ENV_FILE"
-
-# Check if .env is in .gitignore
-if grep -q "^\.env$" "$SCRIPT_DIR/.gitignore" 2>/dev/null; then
-    ok ".env is in .gitignore"
-else
-    warn ".env should already be in .gitignore — verify"
-fi
-echo ""
-
-# ------------------------------------------------------------------
-# 11. Verification
+# 6. Verification
 # ------------------------------------------------------------------
 info "Verifying installation"
 
@@ -342,8 +218,6 @@ check "biopython"                "python -c 'import Bio'"
 check "numpy"                    "python -c 'import numpy'"
 check "typer"                    "python -c 'import typer'"
 check "PyTorch"                  "python -c 'import torch'"
-check "EvoEF binary"             "test -x '$EVOEF_BINARY'"
-check "Graphinity cloned"        "test -d '$TOOLS_DIR/graphinity/src'"
 check "PDB 1N8Z"                 "test -f '$TEST_DATA_DIR/1N8Z.pdb'"
 
 if ! $SKIP_DOCKER; then
@@ -370,8 +244,4 @@ info "Setup complete!"
 echo ""
 echo "  To activate the environment:"
 echo "    source $VENV_DIR/bin/activate"
-echo "    source $ENV_FILE"
-echo ""
-echo "  Or add to your shell profile:"
-echo "    echo 'source $ENV_FILE' >> ~/.bashrc"
 echo ""
