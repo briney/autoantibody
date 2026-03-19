@@ -1,0 +1,29 @@
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04 AS base
+
+LABEL maintainer="briney@scripps.edu"
+LABEL description="autoantibody base image (GPU)"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.12 python3.12-venv python3-pip \
+        gcc g++ && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install autoantibody package
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+
+RUN pip install --no-cache-dir . && \
+    apt-get purge -y gcc g++ && \
+    apt-get autoremove -y
+
+# Copy tool scripts
+COPY tools/ ./tools/
+
+ENV AUTOANTIBODY_CONTAINER=1

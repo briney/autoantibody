@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -62,25 +63,42 @@ def run_stability_check(
         }
         (wd / "input.json").write_text(json.dumps(input_data))
 
-        proc = subprocess.run(
-            [
-                "docker",
-                "run",
-                "--rm",
-                "-v",
-                f"{wd}:/workdir",
-                DOCKER_IMAGE,
-                "python",
-                "/app/predict.py",
-                "--input",
-                "/workdir/input.json",
-                "--output",
-                "/workdir/output.json",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
+        if os.environ.get("AUTOANTIBODY_CONTAINER"):
+            # Inside container: call predict.py directly
+            proc = subprocess.run(
+                [
+                    "python",
+                    "/app/predict.py",
+                    "--input",
+                    str(wd / "input.json"),
+                    "--output",
+                    str(wd / "output.json"),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        else:
+            # Legacy: call via docker run
+            proc = subprocess.run(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "-v",
+                    f"{wd}:/workdir",
+                    DOCKER_IMAGE,
+                    "python",
+                    "/app/predict.py",
+                    "--input",
+                    "/workdir/input.json",
+                    "--output",
+                    "/workdir/output.json",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
 
         if proc.returncode != 0:
             raise RuntimeError(

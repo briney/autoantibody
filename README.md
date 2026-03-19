@@ -20,24 +20,24 @@ The agent is Claude Code itself. Behavior is defined in a program file, and tool
 
 ## Scoring tools
 
-`autoantibody` integrates eight scoring tools across four tiers:
+`autoantibody` integrates eight scoring tools across four tiers. Each tool runs inside its own Docker container, isolating dependencies and making availability a simple "is the image built?" check.
 
-| Tier | Tool | Method | Time | GPU |
-|------|------|--------|------|-----|
-| **Fast** | EvoEF | Physics-based binding ddG | ~5 s | No |
-| **Fast** | StaB-ddG | ML binding ddG | ~60 s | Yes |
-| **Fast** | Graphinity | Equivariant GNN binding ddG | ~10 s | Yes |
-| **Medium** | BA-ddG | Boltzmann-averaged ML ddG | ~3 min | Yes |
-| **Filter** | ProteinMPNN-ddG | Fold stability check | ~30 s | No |
-| **Filter** | ablms | Antibody language model plausibility | ~10 s | Yes |
-| **Oracle** | flex-ddG | Rosetta flex-ddG (Docker) | 30-60 min | No |
-| **Oracle** | AToM-FEP | Alchemical free energy perturbation | 4-6 hrs | Yes |
+| Tier | Tool | Method | Time | GPU | Container |
+|------|------|--------|------|-----|-----------|
+| **Fast** | EvoEF | Physics-based binding ddG | ~5 s | No | `autoantibody/evoef` |
+| **Fast** | StaB-ddG | ML binding ddG | ~60 s | Yes | `autoantibody/stabddg` |
+| **Fast** | Graphinity | Equivariant GNN binding ddG | ~10 s | Yes | `autoantibody/graphinity` |
+| **Medium** | BA-ddG | Boltzmann-averaged ML ddG | ~3 min | Yes | `autoantibody/baddg` |
+| **Filter** | ProteinMPNN-ddG | Fold stability check | ~30 s | No | `autoantibody/proteinmpnn_stability` |
+| **Filter** | ablms | Antibody language model plausibility | ~10 s | Yes | `autoantibody/ablms` |
+| **Oracle** | flex-ddG | Rosetta flex-ddG | 30-60 min | No | `autoantibody/flex_ddg` |
+| **Oracle** | AToM-FEP | Alchemical free energy perturbation | 4-6 hrs | Yes | `autoantibody/atom_fep` |
 
-Tools are discovered at runtime. Only install the ones you need; the system adapts to what's available.
+Tools are discovered at runtime by checking for their Docker images. Only build the ones you need; the system adapts to what's available.
 
 ## Installation
 
-Requires Python 3.12+.
+Requires Python 3.12+ and [Docker](https://docs.docker.com/get-docker/).
 
 ```bash
 # clone the repository
@@ -48,17 +48,43 @@ cd autoantibody
 pip install -e ".[dev]"
 ```
 
-### External tool dependencies
+### Building scoring tool containers
 
-The core package has no heavy dependencies beyond BioPython, Pydantic, and NumPy. Scoring tools have their own requirements and are optional:
+Each scoring tool is packaged as a Docker container. Build them with the included Makefile:
 
-- **EvoEF**: install the [EvoEF](https://github.com/tommyhuangthu/EvoEF) binary and either add it to your `PATH` or set the `EVOEF_BINARY` environment variable
-- **StaB-ddG**: `pip install stabddg`
-- **Graphinity**: `pip install graphinity`
-- **BA-ddG**: clone the repo and set `BADDG_DIR` (or install to `/opt/baddg`)
-- **ProteinMPNN-ddG** and **flex-ddG**: require [Docker](https://docs.docker.com/get-docker/)
-- **AToM-FEP**: `conda install -c conda-forge openmm openmmtools`
-- **ablms**: `pip install ablms`
+```bash
+# build all priority tools (evoef, stabddg, ablms, proteinmpnn_stability, flex_ddg)
+make -C containers build-all
+
+# build a single tool
+make -C containers build-evoef
+
+# smoke test: verify the container starts and imports succeed
+make -C containers test-evoef
+```
+
+Or use the install script, which also handles PyTorch, test data, and verification:
+
+```bash
+# install everything + build all containers
+./install.sh
+
+# minimal: core deps + EvoEF container only
+./install.sh --minimal
+
+# skip Docker builds (install Python deps only)
+./install.sh --skip-docker
+```
+
+### Checking tool availability
+
+```bash
+# list all scorers and their status
+python -m autoantibody.run_tool list
+
+# check a specific scorer
+python -m autoantibody.run_tool check evoef
+```
 
 ## Usage
 
@@ -93,6 +119,37 @@ frozen_positions: [H:52, L:91]
 ```
 
 This creates the campaign directory with the input PDB, initial `state.yaml`, an empty `ledger.jsonl`, and a `scorer_inventory.yaml` listing all detected tools.
+
+### Run a scoring tool
+
+The primary interface for scoring is the `run_tool` CLI, which invokes tools inside their containers:
+
+```bash
+# score a mutation
+python -m autoantibody.run_tool score evoef runs/my_campaign/input/complex.pdb H:52:S:Y
+
+# with extra tool-specific arguments
+python -m autoantibody.run_tool score stabddg complex.pdb H:52:S:Y -- --chains HL_A
+```
+
+Output is JSON with a standardized schema:
+
+```json
+{
+  "status": "ok",
+  "scores": {"ddg": -1.23, "wt_binding_energy": -8.45, "mut_binding_energy": -9.68},
+  "artifacts": {},
+  "wall_time_s": 4.7,
+  "error_message": null,
+  "scorer_name": "evoef"
+}
+```
+
+The tool scripts in `tools/` can also be run directly (they detect whether they're inside a container via `AUTOANTIBODY_CONTAINER` env var):
+
+```bash
+python tools/evoef_ddg.py runs/my_campaign/input/complex.pdb H:52:S:Y
+```
 
 ### Analyze an antibody-antigen interface
 
@@ -193,25 +250,20 @@ fast = get_scorers_by_tier(ScorerTier.FAST)
 print(f"\n{len(fast)} fast scorers available")
 ```
 
-### Run a scoring tool directly
+### Use the container API from Python
 
-Each tool wrapper is a standalone script that takes a PDB path and mutation string:
+```python
+from pathlib import Path
+from autoantibody.container import score_mutation
+from autoantibody.scorers import SCORER_REGISTRY
 
-```bash
-python tools/evoef_ddg.py runs/my_campaign/input/complex.pdb H:52:S:Y
-```
+scorer = SCORER_REGISTRY["evoef"]
+result = score_mutation(scorer, Path("complex.pdb"), "H:52:S:Y")
 
-Output is JSON with a standardized schema:
-
-```json
-{
-  "status": "ok",
-  "scores": {"ddg": -1.23, "wt_total": -8.45, "mut_total": -9.68},
-  "artifacts": {},
-  "wall_time_s": 4.7,
-  "error_message": null,
-  "scorer_name": "evoef"
-}
+if result.status == "ok":
+    print(f"ddG = {result.scores['ddg']:.2f} kcal/mol")
+else:
+    print(f"Error: {result.error_message}")
 ```
 
 ## Project structure
@@ -222,8 +274,10 @@ autoantibody/
 │   ├── models.py           # Data models (Mutation, CampaignState, ToolResult, ...)
 │   ├── state.py            # Campaign state I/O (YAML + JSONL)
 │   ├── structure.py        # PDB parsing and interface analysis
-│   └── scorers.py          # Scorer registry and availability checks
-├── tools/                  # Standalone scoring tool wrappers
+│   ├── scorers.py          # Scorer registry and availability checks
+│   ├── container.py        # Docker container invocation for scoring tools
+│   └── run_tool.py         # CLI entry point (python -m autoantibody.run_tool)
+├── tools/                  # Standalone scoring tool wrappers (run inside containers)
 │   ├── evoef_ddg.py        # EvoEF binding ddG
 │   ├── stabddg_score.py    # StaB-ddG ML binding ddG
 │   ├── graphinity_score.py # Graphinity GNN binding ddG
@@ -232,6 +286,14 @@ autoantibody/
 │   ├── ablms_score.py      # Antibody language model scoring
 │   ├── flex_ddg.py         # Rosetta flex-ddG oracle
 │   └── atom_ddg.py         # AToM-OpenMM FEP oracle
+├── containers/             # Dockerfiles for each scoring tool
+│   ├── base/               # Base images (CPU and GPU)
+│   ├── evoef/              # EvoEF (multi-stage, compiles from source)
+│   ├── stabddg/            # StaB-ddG (GPU + PyTorch)
+│   ├── ablms/              # ablms (GPU + PyTorch)
+│   ├── proteinmpnn_stability/ # ProteinMPNN-ddG (extends vendor image)
+│   ├── flex_ddg/           # Rosetta flex-ddG (extends Rosetta image)
+│   └── Makefile            # Build system (build-all, build-<tool>, test-<tool>)
 ├── scripts/                # CLI entry points
 │   ├── init_campaign.py    # Campaign initialization
 │   └── benchmark_skempi.py # Tool benchmarking on SKEMPI2
@@ -257,6 +319,22 @@ ruff format src/ tests/
 
 # type check
 mypy src/
+```
+
+### Building and testing containers
+
+```bash
+# build all containers
+make -C containers build-all
+
+# run smoke tests (verify containers start)
+make -C containers test-all
+
+# run integration tests (requires built images + test PDB)
+pytest tests/test_container_integration.py -m slow
+
+# clean up all images
+make -C containers clean
 ```
 
 ## License

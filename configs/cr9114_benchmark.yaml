@@ -26,4 +26,4 @@ frozen_positions: []
 # sequence in the PDB. The light chain is unchanged.
 # NOTE: This field is populated by running:
 #   python -c "import yaml; d=yaml.safe_load(open('data/cr9114/germline_sequence.yaml')); print(d['germline_heavy'])"
-# sequence_heavy_override: <paste germline heavy chain sequence here after running prepare_cr9114.py>
+sequence_heavy_override: QVQLVQSGAEVKKPGASVKVSCKASGYTFTGYYMHWVRQAPGQGLEWMGWINPNSGGTNYAQKFQGRVTISADIFSNTAYMELNSLTSEDTAVYFCARHGNYYYYSGMDVWGQGTTVTVSSASTKGPSVFPLAPGGTAALGCLVKDYFPEPVTVSWNSGALTSGVHTFPAVLQSSGLYSLSSVVTVPSSSLGTQTYICNVNHKPSNTKVDKRVEP

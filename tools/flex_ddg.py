@@ -32,6 +32,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -294,21 +295,31 @@ def run_flex_ddg(
     driver_path.write_text(driver)
     driver_path.chmod(0o755)
 
-    proc = subprocess.run(
-        [
-            "docker",
-            "run",
-            "--rm",
-            "-v",
-            f"{work_dir}:/workdir",
-            docker_image,
-            "bash",
-            "/workdir/run.sh",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=7200,  # 2-hour hard timeout
-    )
+    if os.environ.get("AUTOANTIBODY_CONTAINER"):
+        # Inside container: run driver script directly
+        proc = subprocess.run(
+            ["bash", str(driver_path)],
+            capture_output=True,
+            text=True,
+            timeout=7200,
+        )
+    else:
+        # Legacy: call via docker run
+        proc = subprocess.run(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "-v",
+                f"{work_dir}:/workdir",
+                docker_image,
+                "bash",
+                "/workdir/run.sh",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=7200,  # 2-hour hard timeout
+        )
 
     # Save Docker logs regardless of outcome
     (work_dir / "logs" / "docker_stdout.log").write_text(proc.stdout)

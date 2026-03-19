@@ -63,6 +63,9 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 # Pydantic models need runtime access to types like datetime and Path
 "src/autoantibody/models.py" = ["TCH003"]
+# container.py and run_tool.py use Path at runtime
+"src/autoantibody/container.py" = ["TCH003"]
+"src/autoantibody/run_tool.py" = ["B008", "TCH003"]
 # Test files use Path at runtime in fixtures/signatures
 "tests/*.py" = ["TCH003"]
 # Typer uses Option() in function defaults by design; scripts use Path at runtime

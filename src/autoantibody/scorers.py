@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib
 import os
-import shutil
 from pathlib import Path
 
 from autoantibody.models import ScorerInfo, ScorerTier
@@ -17,6 +16,7 @@ SCORER_REGISTRY: dict[str, ScorerInfo] = {
         requires_gpu=False,
         typical_seconds=5.0,
         description="EvoEF physics-based binding ddG (~5s CPU, PCC 0.53 on SKEMPI2)",
+        docker_image="autoantibody/evoef:latest",
     ),
     "stabddg": ScorerInfo(
         name="stabddg",
@@ -25,6 +25,7 @@ SCORER_REGISTRY: dict[str, ScorerInfo] = {
         requires_gpu=True,
         typical_seconds=60.0,
         description="StaB-ddG ML binding ddG (GPU, Spearman 0.45 on SKEMPI2)",
+        docker_image="autoantibody/stabddg:latest",
     ),
     "graphinity": ScorerInfo(
         name="graphinity",
@@ -35,6 +36,7 @@ SCORER_REGISTRY: dict[str, ScorerInfo] = {
         description=(
             "Graphinity equivariant GNN for Ab-Ag binding ddG (GPU, Pearson ~0.87 on SKEMPI2)"
         ),
+        docker_image="autoantibody/graphinity:latest",
     ),
     "baddg": ScorerInfo(
         name="baddg",
@@ -43,6 +45,7 @@ SCORER_REGISTRY: dict[str, ScorerInfo] = {
         requires_gpu=True,
         typical_seconds=180.0,
         description="BA-ddG Boltzmann-averaged ML binding ddG (GPU, Spearman 0.51)",
+        docker_image="autoantibody/baddg:latest",
     ),
     "proteinmpnn_stability": ScorerInfo(
         name="proteinmpnn_stability",
@@ -54,6 +57,7 @@ SCORER_REGISTRY: dict[str, ScorerInfo] = {
             "ProteinMPNN-ddG fold stability filter (Docker). "
             "NOT a binding ddG scorer — rejects fold-destabilizing mutations."
         ),
+        docker_image="autoantibody/proteinmpnn_stability:latest",
     ),
     "ablms": ScorerInfo(
         name="ablms",
@@ -62,6 +66,7 @@ SCORER_REGISTRY: dict[str, ScorerInfo] = {
         requires_gpu=True,
         typical_seconds=10.0,
         description="Antibody language model sequence plausibility scoring",
+        docker_image="autoantibody/ablms:latest",
     ),
     "flex_ddg": ScorerInfo(
         name="flex_ddg",
@@ -70,6 +75,7 @@ SCORER_REGISTRY: dict[str, ScorerInfo] = {
         requires_gpu=False,
         typical_seconds=2400.0,
         description="Rosetta flex-ddG oracle via Docker (30-60 min, PCC ~0.46)",
+        docker_image="autoantibody/flex_ddg:latest",
     ),
     "atom_fep": ScorerInfo(
         name="atom_fep",
@@ -78,6 +84,7 @@ SCORER_REGISTRY: dict[str, ScorerInfo] = {
         requires_gpu=True,
         typical_seconds=18000.0,
         description="AToM-OpenMM alchemical FEP oracle (4-6 hrs GPU, RMSE ~1.0-1.5)",
+        docker_image="autoantibody/atom_fep:latest",
     ),
     "lookup_oracle": ScorerInfo(
         name="lookup_oracle",
@@ -86,6 +93,8 @@ SCORER_REGISTRY: dict[str, ScorerInfo] = {
         requires_gpu=False,
         typical_seconds=0.1,
         description="Experimental Kd lookup oracle for CR9114 benchmark (instant)",
+        containerized=False,
+        docker_image=None,
     ),
 }
 
@@ -93,66 +102,32 @@ SCORER_REGISTRY: dict[str, ScorerInfo] = {
 def check_scorer_available(name: str) -> bool:
     """Check if a scorer's dependencies are available.
 
-    Checks environment variables, binaries, importable packages, and/or Docker
-    images as appropriate for each scorer.
+    For containerized tools, checks that Docker is available and the image exists.
+    For non-containerized tools (lookup_oracle), falls back to legacy checks.
     """
     if name not in SCORER_REGISTRY:
         return False
 
+    info = SCORER_REGISTRY[name]
+
+    if info.containerized and info.docker_image:
+        from autoantibody.container import docker_available, docker_image_exists
+
+        return docker_available() and docker_image_exists(info.docker_image)
+
+    # Non-containerized tools: legacy checks
     match name:
-        case "evoef":
-            env = os.environ.get("EVOEF_BINARY")
-            if env:
-                return Path(env).exists()
-            return shutil.which("evoef") is not None
-
-        case "stabddg":
-            try:
-                importlib.import_module("stabddg")
-                return True
-            except ImportError:
-                return False
-
-        case "graphinity":
-            try:
-                importlib.import_module("graphinity")
-                return True
-            except ImportError:
-                return False
-
-        case "baddg":
-            baddg_dir = os.environ.get("BADDG_DIR")
-            if baddg_dir:
-                return Path(baddg_dir).is_dir()
-            return Path("/opt/baddg").is_dir()
-
-        case "proteinmpnn_stability":
-            return shutil.which("docker") is not None
-
-        case "ablms":
-            try:
-                importlib.import_module("ablms")
-                return True
-            except ImportError:
-                return False
-
-        case "flex_ddg":
-            return shutil.which("docker") is not None
-
-        case "atom_fep":
-            try:
-                importlib.import_module("openmm")
-                importlib.import_module("openmmtools")
-                return True
-            except ImportError:
-                return False
-
         case "lookup_oracle":
             data_dir = Path(os.environ.get("CR9114_DATA_DIR", "data/cr9114"))
             return (data_dir / "variants.parquet").exists()
 
         case _:
-            return False
+            # Fallback for any future non-containerized tool: try importing
+            try:
+                importlib.import_module(name)
+                return True
+            except ImportError:
+                return False
 
 
 def get_available_scorers() -> list[ScorerInfo]:

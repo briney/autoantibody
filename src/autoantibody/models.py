@@ -54,6 +54,9 @@ class ScorerInfo(BaseModel):
     requires_gpu: bool = False
     typical_seconds: float = 0.0
     description: str = ""
+    docker_image: str | None = None
+    container_timeout: float | None = None
+    containerized: bool = True
 
 
 class Mutation(BaseModel):

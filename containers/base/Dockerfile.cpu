@@ -1,0 +1,23 @@
+FROM python:3.12-slim AS base
+
+LABEL maintainer="briney@scripps.edu"
+LABEL description="autoantibody base image (CPU)"
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gcc g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install autoantibody package (models + structure utils only)
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+
+RUN pip install --no-cache-dir . && \
+    apt-get purge -y gcc g++ && \
+    apt-get autoremove -y
+
+# Copy tool scripts
+COPY tools/ ./tools/
+
+ENV AUTOANTIBODY_CONTAINER=1
