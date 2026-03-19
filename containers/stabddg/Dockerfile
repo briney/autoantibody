@@ -9,11 +9,16 @@ LABEL description="autoantibody/stabddg — StaB-ddG ML binding ddG"
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         python3.12 python3.12-venv python3.12-dev \
-        python3-pip gcc g++ git && \
+        gcc g++ git && \
     ln -sf /usr/bin/python3.12 /usr/bin/python && \
     ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
+    python3.12 -m ensurepip --upgrade && \
+    python3.12 -m pip install --no-cache-dir --upgrade pip && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -23,16 +28,11 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 
 # Install StaB-ddG
 RUN pip install --no-cache-dir \
-    tqdm scipy pandas scikit-learn wandb && \
+    tqdm scipy pandas scikit-learn wandb biopython && \
     pip install --no-cache-dir \
     git+https://github.com/LDeng0205/StaB-ddG.git
 
-# Install autoantibody package
-COPY pyproject.toml README.md ./
-COPY src/ ./src/
-RUN pip install --no-cache-dir .
-
-# Copy tool scripts
+# Copy tool scripts (standalone, no autoantibody install needed)
 COPY tools/ ./tools/
 
 # Clean up build deps

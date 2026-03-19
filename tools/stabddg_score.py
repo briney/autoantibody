@@ -30,8 +30,7 @@ import sys
 import time
 from pathlib import Path
 
-from autoantibody.models import Mutation, ToolResult
-from autoantibody.structure import validate_mutation_against_structure
+from _common import Mutation, ToolResult, validate_mutation_against_structure
 
 
 def run_stabddg(
@@ -102,7 +101,7 @@ def main() -> None:
                     error_message=f"Mutation {m}: {'; '.join(errors)}",
                     scorer_name="stabddg",
                 )
-                print(result.model_dump_json(indent=2))
+                print(result.to_json())
                 sys.exit(1)
 
         ddg_values = run_stabddg(pdb_path, mutations, ab_chains, ag_chains)
@@ -129,7 +128,7 @@ def main() -> None:
             scorer_name="stabddg",
         )
 
-    print(result.model_dump_json(indent=2))
+    print(result.to_json())
     sys.exit(0 if result.status == "ok" else 1)
 
 

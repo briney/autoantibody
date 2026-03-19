@@ -35,8 +35,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from autoantibody.models import Mutation, ToolResult
-from autoantibody.structure import validate_mutation_against_structure
+from _common import Mutation, ToolResult, validate_mutation_against_structure
 
 DOCKER_IMAGE = "ghcr.io/peptoneltd/proteinmpnn_ddg:1.0.0_base"
 
@@ -132,7 +131,7 @@ def main() -> None:
                 error_message="; ".join(errors),
                 scorer_name="proteinmpnn_stability",
             )
-            print(result.model_dump_json(indent=2))
+            print(result.to_json())
             sys.exit(1)
 
         stability_ddg = run_stability_check(pdb_path, mutation, args.chain)
@@ -152,7 +151,7 @@ def main() -> None:
             scorer_name="proteinmpnn_stability",
         )
 
-    print(result.model_dump_json(indent=2))
+    print(result.to_json())
     sys.exit(0 if result.status == "ok" else 1)
 
 

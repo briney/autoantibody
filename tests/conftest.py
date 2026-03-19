@@ -8,10 +8,14 @@ from pathlib import Path
 
 import pytest
 
-# Add project root to sys.path so `from tools.xxx import ...` works in tests
+# Add project root to sys.path so `from tools.xxx import ...` works in tests.
+# Also add tools/ so that `from _common import ...` resolves inside tool scripts.
 _project_root = Path(__file__).parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
+_tools_dir = _project_root / "tools"
+if str(_tools_dir) not in sys.path:
+    sys.path.insert(0, str(_tools_dir))
 
 DATA_DIR = Path(__file__).parent / "data"
 PDB_1N8Z = DATA_DIR / "1N8Z.pdb"

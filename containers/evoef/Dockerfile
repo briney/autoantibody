@@ -20,19 +20,17 @@ LABEL description="autoantibody/evoef — EvoEF physics-based binding ddG"
 
 WORKDIR /app
 
-# Install autoantibody package
-COPY pyproject.toml README.md ./
-COPY src/ ./src/
-RUN pip install --no-cache-dir .
+# Install biopython for PDB structure validation
+RUN pip install --no-cache-dir biopython
 
-# Copy tool scripts
+# Copy tool scripts (standalone, no autoantibody install needed)
 COPY tools/ ./tools/
 
-# Copy compiled EvoEF binary + data files
-COPY --from=builder /opt/evoef/EvoEF /usr/local/bin/EvoEF
-COPY --from=builder /opt/evoef/data /opt/evoef/data
+# Copy compiled EvoEF binary + library files (must be colocated;
+# EvoEF resolves library/ relative to the binary's directory via argv[0])
+COPY --from=builder /opt/evoef/EvoEF /opt/evoef/EvoEF
+COPY --from=builder /opt/evoef/library /opt/evoef/library
 
 ENV AUTOANTIBODY_CONTAINER=1
-ENV EVOEF_BINARY=/usr/local/bin/EvoEF
-# EvoEF expects its data dir relative to binary or via EVOEF_DATA_DIR
-ENV EVOEF_DATA_DIR=/opt/evoef/data
+ENV EVOEF_BINARY=/opt/evoef/EvoEF
+ENV PATH="/opt/evoef:${PATH}"

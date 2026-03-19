@@ -14,20 +14,19 @@ RUN apt-get update && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3.12 python3.12-venv python3.12-dev \
-        python3-pip && \
+        python3.12 python3.12-venv python3.12-dev && \
     ln -sf /usr/bin/python3.12 /usr/bin/python && \
     ln -sf /usr/bin/python3.12 /usr/bin/python3 && \
+    python3.12 -m ensurepip --upgrade && \
+    python3.12 -m pip install --no-cache-dir --upgrade pip && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install autoantibody package
-COPY pyproject.toml README.md ./
-COPY src/ ./src/
-RUN pip install --no-cache-dir .
+# Install runtime dependencies for tool scripts
+RUN pip install --no-cache-dir biopython numpy
 
-# Copy tool scripts
+# Copy tool scripts (standalone, no autoantibody install needed)
 COPY tools/ ./tools/
 
 ENV AUTOANTIBODY_CONTAINER=1

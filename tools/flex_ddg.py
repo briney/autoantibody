@@ -41,9 +41,7 @@ import time
 from pathlib import Path
 
 import numpy as np
-
-from autoantibody.models import Mutation, ToolResult
-from autoantibody.structure import validate_mutation_against_structure
+from _common import Mutation, ToolResult, validate_mutation_against_structure
 
 # -- Rosetta XML protocols (embedded) ----------------------------------------
 
@@ -366,7 +364,7 @@ def main() -> None:
                 error_message="; ".join(errors),
                 scorer_name="flex_ddg",
             )
-            print(r.model_dump_json(indent=2))
+            print(r.to_json())
             sys.exit(1)
 
         scores = run_flex_ddg(
@@ -400,7 +398,7 @@ def main() -> None:
         else:
             print(f"Work directory preserved: {work_dir}", file=sys.stderr)
 
-    print(result.model_dump_json(indent=2))
+    print(result.to_json())
     sys.exit(0 if result.status == "ok" else 1)
 
 

@@ -25,7 +25,7 @@ import argparse
 import sys
 import time
 
-from autoantibody.models import ToolResult
+from _common import ToolResult
 
 
 def build_sequence(heavy: str, light: str | None, model_name: str):
@@ -140,7 +140,7 @@ def main() -> None:
             scorer_name="ablms",
         )
 
-    print(result.model_dump_json(indent=2))
+    print(result.to_json())
     sys.exit(0 if result.status == "ok" else 1)
 
 

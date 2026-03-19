@@ -66,19 +66,19 @@ build-all: $(addprefix build-,$(PRIORITY_TOOLS))
 # --- Smoke tests ---
 
 test-evoef: build-evoef
-	docker run --rm $(IMAGE_PREFIX)/evoef:latest python -c "from autoantibody.models import ToolResult; print('ok')"
+	docker run --rm $(IMAGE_PREFIX)/evoef:latest python -c "import sys; sys.path.insert(0, '/app/tools'); from _common import ToolResult; print('ok')"
 
 test-stabddg: build-stabddg
-	docker run --rm $(IMAGE_PREFIX)/stabddg:latest python -c "from autoantibody.models import ToolResult; print('ok')"
+	docker run --rm $(IMAGE_PREFIX)/stabddg:latest python -c "import sys; sys.path.insert(0, '/app/tools'); from _common import ToolResult; print('ok')"
 
 test-ablms: build-ablms
-	docker run --rm $(IMAGE_PREFIX)/ablms:latest python -c "from autoantibody.models import ToolResult; print('ok')"
+	docker run --rm $(IMAGE_PREFIX)/ablms:latest python -c "import sys; sys.path.insert(0, '/app/tools'); from _common import ToolResult; print('ok')"
 
 test-proteinmpnn_stability: build-proteinmpnn_stability
-	docker run --rm $(IMAGE_PREFIX)/proteinmpnn_stability:latest python -c "from autoantibody.models import ToolResult; print('ok')"
+	docker run --rm $(IMAGE_PREFIX)/proteinmpnn_stability:latest python -c "import sys; sys.path.insert(0, '/app/tools'); from _common import ToolResult; print('ok')"
 
 test-flex_ddg: build-flex_ddg
-	docker run --rm $(IMAGE_PREFIX)/flex_ddg:latest python -c "from autoantibody.models import ToolResult; print('ok')"
+	docker run --rm $(IMAGE_PREFIX)/flex_ddg:latest python -c "import sys; sys.path.insert(0, '/app/tools'); from _common import ToolResult; print('ok')"
 
 test-all: $(addprefix test-,$(PRIORITY_TOOLS))
 

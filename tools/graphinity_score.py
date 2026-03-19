@@ -31,8 +31,7 @@ import sys
 import time
 from pathlib import Path
 
-from autoantibody.models import Mutation, ToolResult
-from autoantibody.structure import validate_mutation_against_structure
+from _common import Mutation, ToolResult, validate_mutation_against_structure
 
 
 def run_graphinity(
@@ -83,7 +82,7 @@ def main() -> None:
                 error_message="; ".join(errors),
                 scorer_name="graphinity",
             )
-            print(result.model_dump_json(indent=2))
+            print(result.to_json())
             sys.exit(1)
 
         ddg = run_graphinity(pdb_path, mutation, args.ab_chains, args.ag_chains)
@@ -103,7 +102,7 @@ def main() -> None:
             scorer_name="graphinity",
         )
 
-    print(result.model_dump_json(indent=2))
+    print(result.to_json())
     sys.exit(0 if result.status == "ok" else 1)
 
 

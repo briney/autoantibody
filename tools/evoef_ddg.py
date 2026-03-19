@@ -29,8 +29,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from autoantibody.models import Mutation, ToolResult
-from autoantibody.structure import validate_mutation_against_structure
+from _common import Mutation, ToolResult, validate_mutation_against_structure
 
 
 def find_evoef_binary() -> Path:
@@ -127,7 +126,7 @@ def main() -> None:
                 error_message="; ".join(errors),
                 scorer_name="evoef",
             )
-            print(result.model_dump_json(indent=2))
+            print(result.to_json())
             sys.exit(1)
 
         evoef = find_evoef_binary()
@@ -170,7 +169,7 @@ def main() -> None:
             scorer_name="evoef",
         )
 
-    print(result.model_dump_json(indent=2))
+    print(result.to_json())
     sys.exit(0 if result.status == "ok" else 1)
 
 

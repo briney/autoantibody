@@ -29,8 +29,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import yaml
+from _common import Mutation, ToolResult
 
-from autoantibody.models import Mutation, ToolResult
 from autoantibody.state import load_state
 
 if TYPE_CHECKING:
@@ -265,7 +265,7 @@ def main() -> None:
             scorer_name="lookup_oracle",
         )
 
-    print(result.model_dump_json(indent=2))
+    print(result.to_json())
     sys.exit(0 if result.status == "ok" else 1)
 
 
