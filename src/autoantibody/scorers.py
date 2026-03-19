@@ -79,6 +79,14 @@ SCORER_REGISTRY: dict[str, ScorerInfo] = {
         typical_seconds=18000.0,
         description="AToM-OpenMM alchemical FEP oracle (4-6 hrs GPU, RMSE ~1.0-1.5)",
     ),
+    "lookup_oracle": ScorerInfo(
+        name="lookup_oracle",
+        tier=ScorerTier.ORACLE,
+        script_path=Path("tools/lookup_oracle.py"),
+        requires_gpu=False,
+        typical_seconds=0.1,
+        description="Experimental Kd lookup oracle for CR9114 benchmark (instant)",
+    ),
 }
 
 
@@ -138,6 +146,10 @@ def check_scorer_available(name: str) -> bool:
                 return True
             except ImportError:
                 return False
+
+        case "lookup_oracle":
+            data_dir = Path(os.environ.get("CR9114_DATA_DIR", "data/cr9114"))
+            return (data_dir / "variants.parquet").exists()
 
         case _:
             return False

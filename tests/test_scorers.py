@@ -22,6 +22,7 @@ class TestScorerRegistry:
             "ablms",
             "flex_ddg",
             "atom_fep",
+            "lookup_oracle",
         }
         assert set(SCORER_REGISTRY.keys()) == expected
 
@@ -42,6 +43,7 @@ class TestScorerRegistry:
         assert SCORER_REGISTRY["ablms"].tier == ScorerTier.FILTER
         assert SCORER_REGISTRY["flex_ddg"].tier == ScorerTier.ORACLE
         assert SCORER_REGISTRY["atom_fep"].tier == ScorerTier.ORACLE
+        assert SCORER_REGISTRY["lookup_oracle"].tier == ScorerTier.ORACLE
 
 
 class TestScorerAvailability:
@@ -62,9 +64,9 @@ class TestScorerAvailability:
 
     def test_get_scorers_by_tier_oracle(self) -> None:
         oracles = get_scorers_by_tier(ScorerTier.ORACLE)
-        assert len(oracles) == 2
+        assert len(oracles) == 3
         names = {s.name for s in oracles}
-        assert names == {"flex_ddg", "atom_fep"}
+        assert names == {"flex_ddg", "atom_fep", "lookup_oracle"}
 
     def test_get_scorers_by_tier_filter(self) -> None:
         filters = get_scorers_by_tier(ScorerTier.FILTER)

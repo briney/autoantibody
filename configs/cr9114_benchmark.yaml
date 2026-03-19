@@ -1,0 +1,29 @@
+# CR9114 Benchmark Campaign Configuration
+#
+# Uses the CR9114 deep mutational scanning dataset (Phillips et al., eLife 2021)
+# to benchmark the autoresearch optimization loop.
+#
+# Before running:
+#   python scripts/prepare_cr9114.py
+#
+# Initialize:
+#   python scripts/init_campaign.py --config configs/cr9114_benchmark.yaml
+#
+# The sequence_heavy_override is computed by prepare_cr9114.py and written to
+# data/cr9114/germline_sequence.yaml. Copy the germline_heavy value here after
+# running the prepare script.
+
+pdb: data/cr9114/4FQI_clean.pdb
+heavy_chain: H
+light_chain: L
+antigen_chains: [A, B]
+output: runs/cr9114_h1_001
+campaign_id: cr9114_h1_001
+frozen_positions: []
+
+# Override the heavy chain sequence with the germline VH1-69 sequence.
+# This starts the campaign from germline rather than the mature CR9114
+# sequence in the PDB. The light chain is unchanged.
+# NOTE: This field is populated by running:
+#   python -c "import yaml; d=yaml.safe_load(open('data/cr9114/germline_sequence.yaml')); print(d['germline_heavy'])"
+# sequence_heavy_override: <paste germline heavy chain sequence here after running prepare_cr9114.py>

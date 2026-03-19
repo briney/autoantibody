@@ -44,6 +44,9 @@ def main(
     ] = None,
 ) -> None:
     """Create a campaign directory with state.yaml, empty ledger, and scorer inventory."""
+    seq_heavy_override: str | None = None
+    seq_light_override: str | None = None
+
     if config:
         with open(config) as f:
             cfg = yaml.safe_load(f)
@@ -54,6 +57,8 @@ def main(
         output = Path(cfg["output"])
         campaign_id = cfg.get("campaign_id")
         frozen = cfg.get("frozen_positions", [])
+        seq_heavy_override = cfg.get("sequence_heavy_override")
+        seq_light_override = cfg.get("sequence_light_override")
 
     if frozen is None:
         frozen = []
@@ -83,6 +88,8 @@ def main(
         antigen_chains=antigen_chains,
         campaign_id=campaign_id,
         frozen_positions=frozen,
+        sequence_heavy_override=seq_heavy_override,
+        sequence_light_override=seq_light_override,
     )
 
     # Write scorer inventory

@@ -54,6 +54,8 @@ def init_campaign(
     antigen_chains: list[str],
     campaign_id: str | None = None,
     frozen_positions: list[str] | None = None,
+    sequence_heavy_override: str | None = None,
+    sequence_light_override: str | None = None,
 ) -> CampaignState:
     """Initialize a new campaign from an input PDB.
 
@@ -68,6 +70,10 @@ def init_campaign(
         antigen_chains: Antigen chain IDs (e.g., ["A"]).
         campaign_id: Optional ID. Auto-generated from timestamp if omitted.
         frozen_positions: Positions to exclude (e.g., ["H:52", "L:91"]).
+        sequence_heavy_override: Override heavy chain sequence instead of
+            extracting from PDB. Useful for starting from a germline sequence
+            while keeping the mature PDB structure.
+        sequence_light_override: Override light chain sequence.
 
     Returns:
         The initialized CampaignState.
@@ -89,13 +95,16 @@ def init_campaign(
     if campaign_id is None:
         campaign_id = f"cmp_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"
 
+    heavy_seq = sequence_heavy_override or sequences[antibody_heavy_chain]
+    light_seq = sequence_light_override or sequences[antibody_light_chain]
+
     state = CampaignState(
         campaign_id=campaign_id,
         started_at=datetime.now(UTC),
         iteration=0,
         parent=ParentState(
-            sequence_heavy=sequences[antibody_heavy_chain],
-            sequence_light=sequences[antibody_light_chain],
+            sequence_heavy=heavy_seq,
+            sequence_light=light_seq,
             structure=f"input/{pdb_path.name}",
             ddg_cumulative=0.0,
         ),
