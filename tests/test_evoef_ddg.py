@@ -20,6 +20,9 @@ from tools.evoef_ddg import (
 
 PDB_PATH = Path(__file__).parent / "data" / "1N8Z.pdb"
 
+# Env dict that prevents auto-containerization in subprocess tests.
+_HOST_ENV = {**__import__("os").environ, "AUTOANTIBODY_CONTAINER": "1"}
+
 
 # ── find_evoef_binary ────────────────────────────────────────────────────── #
 
@@ -124,6 +127,7 @@ class TestEvoefCLIValidation:
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent,
+            env=_HOST_ENV,
         )
         assert result.returncode != 0
         output = json.loads(result.stdout)
@@ -137,5 +141,6 @@ class TestEvoefCLIValidation:
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent,
+            env=_HOST_ENV,
         )
         assert result.returncode != 0

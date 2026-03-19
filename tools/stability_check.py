@@ -17,7 +17,8 @@ Output (stdout):
     Flag mutations with stability_ddg > 2.0 kcal/mol.
 
 Requires:
-    Docker with ghcr.io/peptoneltd/proteinmpnn_ddg:1.0.0_base image.
+    autoantibody/proteinmpnn_stability Docker image (extends vendor image
+    ghcr.io/peptoneltd/proteinmpnn_ddg:1.0.0_base).
 
 Example:
     python tools/stability_check.py runs/cmp_001/input/1N8Z.pdb H:52:S:Y --chain H
@@ -26,7 +27,7 @@ Example:
 from __future__ import annotations
 
 import argparse
-import json
+import csv
 import os
 import shutil
 import subprocess
@@ -35,9 +36,67 @@ import tempfile
 import time
 from pathlib import Path
 
-from _common import Mutation, ToolResult, validate_mutation_against_structure
+from _common import (
+    Mutation,
+    ToolResult,
+    maybe_relaunch_in_container,
+    validate_mutation_against_structure,
+)
 
-DOCKER_IMAGE = "ghcr.io/peptoneltd/proteinmpnn_ddg:1.0.0_base"
+
+def _get_chain_ids(pdb_path: Path) -> list[str]:
+    """Extract unique chain IDs from a PDB file, in order of appearance."""
+    chains: list[str] = []
+    seen: set[str] = set()
+    with open(pdb_path) as f:
+        for line in f:
+            if line.startswith(("ATOM", "HETATM")) and len(line) > 21:
+                chain = line[21]
+                if chain not in seen and chain.strip():
+                    seen.add(chain)
+                    chains.append(chain)
+    return chains
+
+
+def _extract_mutation_ddg(csv_path: Path, mutation: Mutation) -> float:
+    """Extract the stability ddG for a specific mutation from the saturation CSV.
+
+    The vendor predict.py outputs ALL point mutations for the chain.  We filter
+    for the specific (position, wt_aa, mut_aa) triple.
+    """
+    target_pos = int("".join(c for c in mutation.resnum if c.isdigit()))
+
+    candidates: list[tuple[int, float]] = []
+    with open(csv_path) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            pre = row["pre"]
+            post = row["post"]
+            if pre == mutation.wt_aa and post == mutation.mut_aa:
+                ddg_col = (
+                    "logit_difference_ddg"
+                    if "logit_difference_ddg" in row and row["logit_difference_ddg"]
+                    else "logit_difference"
+                )
+                candidates.append((int(row["pos"]), float(row[ddg_col])))
+
+    if not candidates:
+        raise ValueError(
+            f"No rows match wt={mutation.wt_aa} mut={mutation.mut_aa} in ProteinMPNN-ddG output"
+        )
+
+    if len(candidates) == 1:
+        return candidates[0][1]
+
+    # Multiple positions with same AA pair — disambiguate by position.
+    for pos, ddg in candidates:
+        if pos == target_pos:
+            return ddg
+
+    raise ValueError(
+        f"Position {target_pos} not found among matching rows "
+        f"(positions: {[c[0] for c in candidates]})"
+    )
 
 
 def run_stability_check(
@@ -45,74 +104,58 @@ def run_stability_check(
     mutation: Mutation,
     chain_id: str,
 ) -> float:
-    """Run ProteinMPNN-ddG stability prediction via Docker.
+    """Run ProteinMPNN-ddG stability prediction.
+
+    Inside the container, calls the vendor predict.py directly with its actual
+    CLI (--pdb_path, --chains, --chain_to_predict, --outpath).
 
     Returns:
         Predicted stability ddG (positive = destabilizing).
     """
     with tempfile.TemporaryDirectory(prefix="stability_") as tmpdir:
         wd = Path(tmpdir)
-        shutil.copy2(pdb_path, wd / "input.pdb")
+        input_pdb = wd / "input.pdb"
+        shutil.copy2(pdb_path, input_pdb)
+        output_csv = wd / "output.csv"
 
-        # Create input JSON for ProteinMPNN-ddG
-        input_data = {
-            "pdb_file": "/workdir/input.pdb",
-            "chain": chain_id,
-            "mutation": mutation.to_skempi(),
-        }
-        (wd / "input.json").write_text(json.dumps(input_data))
+        # Provide all chains for structural context.
+        all_chains = _get_chain_ids(pdb_path)
+        chains_str = ",".join(all_chains) if all_chains else chain_id
 
-        if os.environ.get("AUTOANTIBODY_CONTAINER"):
-            # Inside container: call predict.py directly
-            proc = subprocess.run(
-                [
-                    "python",
-                    "/app/predict.py",
-                    "--input",
-                    str(wd / "input.json"),
-                    "--output",
-                    str(wd / "output.json"),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=300,
-            )
-        else:
-            # Legacy: call via docker run
-            proc = subprocess.run(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "-v",
-                    f"{wd}:/workdir",
-                    DOCKER_IMAGE,
-                    "python",
-                    "/app/predict.py",
-                    "--input",
-                    "/workdir/input.json",
-                    "--output",
-                    "/workdir/output.json",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=300,
-            )
+        cmd = [
+            "python",
+            "/app/proteinmpnn_ddg/predict.py",
+            "--pdb_path",
+            str(input_pdb),
+            "--chains",
+            chains_str,
+            "--chain_to_predict",
+            chain_id,
+            "--outpath",
+            str(output_csv),
+        ]
+
+        env = {**os.environ, "JAX_PLATFORMS": "cpu"}
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            env=env,
+        )
 
         if proc.returncode != 0:
-            raise RuntimeError(
-                f"ProteinMPNN-ddG Docker failed (exit {proc.returncode}): {proc.stderr}"
-            )
+            raise RuntimeError(f"predict.py failed (exit {proc.returncode}): {proc.stderr}")
 
-        output_path = wd / "output.json"
-        if not output_path.exists():
-            raise FileNotFoundError("No output.json produced")
+        if not output_csv.exists():
+            raise FileNotFoundError("No output CSV produced by predict.py")
 
-        output = json.loads(output_path.read_text())
-        return float(output["ddg"])
+        return _extract_mutation_ddg(output_csv, mutation)
 
 
 def main() -> None:
+    maybe_relaunch_in_container("proteinmpnn_stability")
+
     ap = argparse.ArgumentParser(description="ProteinMPNN-ddG fold stability filter")
     ap.add_argument("pdb_path", type=Path)
     ap.add_argument("mutation", type=str)

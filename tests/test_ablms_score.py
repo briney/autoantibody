@@ -11,6 +11,9 @@ from tools.ablms_score import build_sequence, cmd_score
 
 PDB_PATH = Path(__file__).parent / "data" / "1N8Z.pdb"
 
+# Env dict that prevents auto-containerization in subprocess tests.
+_HOST_ENV = {**__import__("os").environ, "AUTOANTIBODY_CONTAINER": "1"}
+
 
 # ── build_sequence ───────────────────────────────────────────────────────── #
 
@@ -63,6 +66,7 @@ class TestAblmsCLIValidation:
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent,
+            env=_HOST_ENV,
         )
         assert result.returncode != 0
 
@@ -72,5 +76,6 @@ class TestAblmsCLIValidation:
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent,
+            env=_HOST_ENV,
         )
         assert result.returncode != 0

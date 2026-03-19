@@ -17,7 +17,8 @@ Output (stdout):
     JSON with status, scores.ddg, scorer_name, wall_time_s.
 
 Requires:
-    StaB-ddG package + checkpoint (stabddg.pt).
+    StaB-ddG package + checkpoint (stabddg.pt), available inside the
+    autoantibody/stabddg Docker container.
 
 Example:
     python tools/stabddg_score.py runs/cmp_001/input/1N8Z.pdb H:52:S:Y --chains HL_A
@@ -26,11 +27,42 @@ Example:
 from __future__ import annotations
 
 import argparse
+import csv
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
-from _common import Mutation, ToolResult, validate_mutation_against_structure
+from _common import (
+    Mutation,
+    ToolResult,
+    maybe_relaunch_in_container,
+    validate_mutation_against_structure,
+)
+
+
+def _parse_stabddg_csv(csv_path: Path, mutation_str: str) -> float:
+    """Extract the predicted ddG for a mutation from StaB-ddG output CSV.
+
+    Args:
+        csv_path: Path to the output CSV (columns: Name, Mutation, pred_1).
+        mutation_str: SKEMPI-format mutation string (e.g., "SH52Y").
+
+    Returns:
+        Predicted ddG value.
+
+    Raises:
+        ValueError: If the mutation is not found in the CSV.
+    """
+    with open(csv_path) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row["Mutation"] == mutation_str:
+                return float(row["pred_1"])
+    raise ValueError(f"Mutation {mutation_str} not found in StaB-ddG output")
 
 
 def run_stabddg(
@@ -41,6 +73,9 @@ def run_stabddg(
 ) -> list[float]:
     """Run StaB-ddG prediction on one or more mutations.
 
+    Shells out to the upstream ``run_stabddg.py`` CLI, which handles PDB
+    parsing, chain extraction, dataset creation, model loading, and inference.
+
     Args:
         pdb_path: Path to input PDB.
         mutations: List of mutations to score.
@@ -50,18 +85,71 @@ def run_stabddg(
     Returns:
         List of predicted ddG values, one per mutation.
     """
-    from stabddg import predict_ddg  # type: ignore[import-untyped]
+    stabddg_dir = Path(os.environ.get("STABDDG_DIR", "/opt/stabddg"))
+    checkpoint = stabddg_dir / "model_ckpts" / "stabddg.pt"
 
-    mut_strs = [m.to_stabddg() for m in mutations]
-    results = predict_ddg(
-        pdb_file=str(pdb_path),
-        mutations=mut_strs,
-        partner_chains=[ab_chains, ag_chains],
-    )
-    return [float(r) for r in results]
+    # Detect GPU availability
+    try:
+        import torch
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    except ImportError:
+        device = "cpu"
+
+    chains_spec = f"{ab_chains}_{ag_chains}"
+    results: list[float] = []
+
+    for mutation in mutations:
+        with tempfile.TemporaryDirectory(prefix="stabddg_") as tmpdir:
+            wd = Path(tmpdir)
+
+            # Copy PDB to work dir — run_stabddg.py creates output next to PDB.
+            local_pdb = wd / pdb_path.name
+            shutil.copy2(pdb_path, local_pdb)
+
+            mut_str = mutation.to_stabddg()
+            cmd = [
+                "python",
+                str(stabddg_dir / "run_stabddg.py"),
+                "--pdb_path",
+                str(local_pdb),
+                "--mutation",
+                mut_str,
+                "--chains",
+                chains_spec,
+                "--checkpoint",
+                str(checkpoint),
+                "--device",
+                device,
+                "--run_name",
+                "output",
+            ]
+
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+
+            if proc.returncode != 0:
+                raise RuntimeError(f"StaB-ddG failed: {proc.stderr}")
+
+            # Parse output CSV — located at {pdb_stem}_output/output.csv
+            pdb_stem = local_pdb.stem
+            output_csv = wd / f"{pdb_stem}_output" / "output.csv"
+
+            if not output_csv.exists():
+                raise FileNotFoundError(f"StaB-ddG output not found: {output_csv}")
+
+            results.append(_parse_stabddg_csv(output_csv, mut_str))
+
+    return results
 
 
 def main() -> None:
+    maybe_relaunch_in_container("stabddg")
+
     ap = argparse.ArgumentParser(description="StaB-ddG binding ddG scorer")
     ap.add_argument("pdb_path", type=Path)
     ap.add_argument("mutation", nargs="?", type=str, default=None)

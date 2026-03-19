@@ -82,6 +82,7 @@ testpaths = ["tests"]
 addopts = "-ra -q"
 markers = [
     "slow: marks tests that require external tools (deselect with '-m \"not slow\"')",
+    "container: marks tests that require built Docker images (deselect with '-m \"not container\"')",
 ]
 
 [tool.mypy]

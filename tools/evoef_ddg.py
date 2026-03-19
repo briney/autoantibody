@@ -29,7 +29,12 @@ import tempfile
 import time
 from pathlib import Path
 
-from _common import Mutation, ToolResult, validate_mutation_against_structure
+from _common import (
+    Mutation,
+    ToolResult,
+    maybe_relaunch_in_container,
+    validate_mutation_against_structure,
+)
 
 
 def find_evoef_binary() -> Path:
@@ -71,12 +76,16 @@ def run_evoef_build_mutant(
 ) -> Path:
     """Run BuildMutant and return path to mutant PDB."""
     mut_str = mutation.to_evoef()
+    # EvoEF's --mutant_file expects a *file path*, not a mutation string.
+    # File format: one mutation per line, semicolon-terminated.
+    mut_file = work_dir / "individual_list.txt"
+    mut_file.write_text(f"{mut_str};\n")
     subprocess.run(
         [
             str(evoef),
             "--command=BuildMutant",
             f"--pdb={pdb_path.name}",
-            f"--mutant_file={mut_str}",
+            f"--mutant_file={mut_file.name}",
         ],
         cwd=work_dir,
         capture_output=True,
@@ -110,6 +119,8 @@ def run_evoef_compute_binding(
 
 
 def main() -> None:
+    maybe_relaunch_in_container("evoef")
+
     if len(sys.argv) != 3:
         print(f"Usage: {sys.argv[0]} <pdb_path> <mutation>", file=sys.stderr)
         sys.exit(1)

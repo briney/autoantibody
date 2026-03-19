@@ -1,14 +1,12 @@
-"""Integration tests for tool wrappers.
+"""Integration tests for tool wrappers — real invocations, no mocks.
 
-These tests require external tools and are marked slow:
-- EvoEF binary (EVOEF_BINARY env var)
-- StaB-ddG package
-- Graphinity package
-- BA-ddG installation
-- Docker with rosettacommons/rosetta and proteinmpnn_ddg images
-- GPU with ablms installed
+Containerized tools (evoef, stabddg, graphinity, stability_check, flex_ddg)
+are invoked exactly as a user would: ``python tools/X.py <pdb> <mutation>``.
+Auto-containerization runs the tool inside Docker, so the full container
+pipeline is exercised.  Tests skip gracefully if the required Docker image
+is not built.
 
-Run with: pytest -m slow
+Run with: ``pytest -m container``  (or ``pytest -m slow`` for all slow tests)
 """
 
 from __future__ import annotations
@@ -23,7 +21,7 @@ import pytest
 from autoantibody.models import ToolResult
 from autoantibody.structure import extract_sequences, get_residue_map
 
-from .conftest import ANTIGEN_CHAINS, HEAVY_CHAIN, LIGHT_CHAIN
+from .conftest import ANTIGEN_CHAINS, HEAVY_CHAIN, LIGHT_CHAIN, skip_unless_container
 
 
 def _pick_test_mutation(pdb_path: Path) -> str:
@@ -36,8 +34,10 @@ def _pick_test_mutation(pdb_path: Path) -> str:
 
 
 @pytest.mark.slow
+@pytest.mark.container
 class TestEvoEF:
     def test_evoef_runs(self, pdb_1n8z: Path) -> None:
+        skip_unless_container("autoantibody/evoef:latest")
         mutation = _pick_test_mutation(pdb_1n8z)
         result = subprocess.run(
             [sys.executable, "tools/evoef_ddg.py", str(pdb_1n8z), mutation],
@@ -53,6 +53,7 @@ class TestEvoEF:
         assert tr.scorer_name == "evoef"
 
     def test_evoef_rejects_bad_mutation(self, pdb_1n8z: Path) -> None:
+        skip_unless_container("autoantibody/evoef:latest")
         result = subprocess.run(
             [sys.executable, "tools/evoef_ddg.py", str(pdb_1n8z), "Z:999:A:G"],
             capture_output=True,
@@ -65,8 +66,10 @@ class TestEvoEF:
 
 
 @pytest.mark.slow
+@pytest.mark.container
 class TestStabDDG:
     def test_stabddg_runs(self, pdb_1n8z: Path) -> None:
+        skip_unless_container("autoantibody/stabddg:latest")
         mutation = _pick_test_mutation(pdb_1n8z)
         result = subprocess.run(
             [
@@ -90,8 +93,10 @@ class TestStabDDG:
 
 
 @pytest.mark.slow
+@pytest.mark.container
 class TestGraphinity:
     def test_graphinity_runs(self, pdb_1n8z: Path) -> None:
+        skip_unless_container("autoantibody/graphinity:latest")
         mutation = _pick_test_mutation(pdb_1n8z)
         result = subprocess.run(
             [
@@ -142,8 +147,10 @@ class TestBADDG:
 
 
 @pytest.mark.slow
+@pytest.mark.container
 class TestStabilityCheck:
     def test_stability_check_runs(self, pdb_1n8z: Path) -> None:
+        skip_unless_container("autoantibody/proteinmpnn_stability:latest")
         mutation = _pick_test_mutation(pdb_1n8z)
         chain = mutation.split(":")[0]
         result = subprocess.run(
@@ -197,9 +204,11 @@ class TestAtomFEP:
 
 
 @pytest.mark.slow
+@pytest.mark.container
 class TestFlexDDG:
     def test_flex_ddg_quick_run(self, pdb_1n8z: Path) -> None:
         """Minimal flex-ddG run (2 structures, 5000 trials)."""
+        skip_unless_container("autoantibody/flex_ddg:latest")
         mutation = _pick_test_mutation(pdb_1n8z)
         result = subprocess.run(
             [
@@ -228,8 +237,10 @@ class TestFlexDDG:
 
 
 @pytest.mark.slow
+@pytest.mark.container
 class TestAblms:
     def test_ablms_score(self, pdb_1n8z: Path) -> None:
+        skip_unless_container("autoantibody/ablms:latest")
         seqs = extract_sequences(pdb_1n8z)
         heavy_seq = seqs[HEAVY_CHAIN]
         light_seq = seqs[LIGHT_CHAIN]
@@ -261,9 +272,11 @@ class TestAblms:
 
 
 @pytest.mark.slow
+@pytest.mark.container
 class TestEndToEnd:
     def test_full_workflow(self, tmp_path: Path, pdb_1n8z: Path) -> None:
         """Init campaign -> EvoEF screen -> verify state update."""
+        skip_unless_container("autoantibody/evoef:latest")
         from datetime import UTC, datetime
 
         from autoantibody.models import IterationDecision

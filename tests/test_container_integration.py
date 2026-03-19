@@ -1,7 +1,10 @@
 """Integration tests for containerized scoring tools.
 
-These tests require Docker and built images. Run with:
-    pytest tests/test_container_integration.py -m slow
+These tests exercise the autoantibody.container.score_mutation() path (which
+builds Docker commands programmatically).  For tests that exercise the exact
+user invocation path (``python tools/X.py``), see test_tools.py.
+
+Run with: ``pytest -m container``
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from autoantibody.scorers import SCORER_REGISTRY
 # Skip entire module if Docker is unavailable
 pytestmark = [
     pytest.mark.slow,
+    pytest.mark.container,
     pytest.mark.skipif(not docker_available(), reason="Docker not available"),
 ]
 

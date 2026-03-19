@@ -25,7 +25,7 @@ import argparse
 import sys
 import time
 
-from _common import ToolResult
+from _common import ToolResult, maybe_relaunch_in_container
 
 
 def build_sequence(heavy: str, light: str | None, model_name: str):
@@ -99,6 +99,8 @@ def cmd_scan(args: argparse.Namespace) -> dict[str, float]:
 
 
 def main() -> None:
+    maybe_relaunch_in_container("ablms")
+
     parser = argparse.ArgumentParser(description="ablms sequence scoring")
     parser.add_argument("--device", default="cuda", help="Compute device (default: cuda)")
     sub = parser.add_subparsers(dest="command", required=True)

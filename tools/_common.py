@@ -12,6 +12,10 @@ parse container output with ToolResult.model_validate().
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -175,3 +179,69 @@ def validate_mutation_against_structure(
         errors.append(f"Silent mutation: {mutation}")
 
     return errors
+
+
+# ---------------------------------------------------------------------------
+# Auto-containerization: re-launch tool scripts inside Docker when on host
+# ---------------------------------------------------------------------------
+
+_DOCKER_IMAGES: dict[str, str] = {
+    "evoef": "autoantibody/evoef:latest",
+    "stabddg": "autoantibody/stabddg:latest",
+    "graphinity": "autoantibody/graphinity:latest",
+    "proteinmpnn_stability": "autoantibody/proteinmpnn_stability:latest",
+    "ablms": "autoantibody/ablms:latest",
+}
+
+_GPU_TOOLS: frozenset[str] = frozenset({"stabddg", "graphinity", "ablms"})
+
+
+def maybe_relaunch_in_container(scorer_name: str) -> None:
+    """If not inside a container, re-invoke this script inside Docker and exit.
+
+    Call this as the first line of ``main()`` in each tool script.  When
+    running on the host (``AUTOANTIBODY_CONTAINER`` not set), this function
+    re-executes the same script inside the appropriate Docker container with
+    input files bind-mounted, streams stdout/stderr, and calls ``sys.exit()``.
+
+    If already inside a container, returns immediately.
+    """
+    if os.environ.get("AUTOANTIBODY_CONTAINER"):
+        return
+
+    image = _DOCKER_IMAGES.get(scorer_name)
+    if not image:
+        return
+
+    if not shutil.which("docker"):
+        print(
+            f"Docker not found. Install Docker or run inside the {image} container.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    needs_gpu = scorer_name in _GPU_TOOLS
+
+    # Resolve file-path arguments and collect directories to bind-mount.
+    mount_dirs: set[str] = set()
+    resolved_args: list[str] = []
+    for arg in sys.argv[1:]:
+        abs_path = os.path.abspath(arg)
+        if os.path.exists(abs_path):
+            mount_dirs.add(os.path.dirname(abs_path))
+            resolved_args.append(abs_path)
+        else:
+            resolved_args.append(arg)
+
+    cmd: list[str] = ["docker", "run", "--rm"]
+    for d in sorted(mount_dirs):
+        cmd.extend(["-v", f"{d}:{d}:ro"])
+
+    if needs_gpu:
+        cmd.extend(["--gpus", "all"])
+
+    script_name = os.path.basename(sys.argv[0])
+    cmd.extend([image, "python", f"/app/tools/{script_name}"] + resolved_args)
+
+    result = subprocess.run(cmd)
+    sys.exit(result.returncode)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
@@ -51,3 +53,63 @@ def tmp_campaign(tmp_path: Path, pdb_1n8z: Path) -> Path:
         campaign_id="test_cmp_001",
     )
     return campaign_dir
+
+
+# ---------------------------------------------------------------------------
+# Container helpers
+# ---------------------------------------------------------------------------
+
+
+def _docker_available() -> bool:
+    """Check whether the Docker daemon is reachable."""
+    try:
+        proc = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            timeout=10,
+        )
+        return proc.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def _docker_image_exists(image: str) -> bool:
+    """Check whether a Docker image is available locally."""
+    try:
+        proc = subprocess.run(
+            ["docker", "image", "inspect", image],
+            capture_output=True,
+            timeout=10,
+        )
+        return proc.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def skip_unless_container(image: str) -> None:
+    """pytest.skip() if Docker is unavailable or *image* is not built."""
+    if not _docker_available():
+        pytest.skip("Docker not available")
+    if not _docker_image_exists(image):
+        pytest.skip(f"Docker image not built: {image}")
+
+
+def run_tool_cli(
+    script: str,
+    args: list[str],
+    timeout: int = 120,
+) -> dict:
+    """Run a tool script as a subprocess and return parsed JSON output.
+
+    The call does NOT set AUTOANTIBODY_CONTAINER, so auto-containerization
+    will trigger Docker if the tool is configured for it.  This exercises the
+    exact same code path a user would follow.
+    """
+    proc = subprocess.run(
+        [sys.executable, script, *args],
+        capture_output=True,
+        text=True,
+        cwd=_project_root,
+        timeout=timeout,
+    )
+    return json.loads(proc.stdout)

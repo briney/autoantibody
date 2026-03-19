@@ -6,7 +6,7 @@ REPO_ROOT := $(shell dirname $(realpath $(MAKEFILE_LIST)))/../
 IMAGE_PREFIX := autoantibody
 
 # Priority tools (this PR)
-PRIORITY_TOOLS := evoef stabddg ablms proteinmpnn_stability flex_ddg
+PRIORITY_TOOLS := evoef stabddg ablms proteinmpnn_stability flex_ddg graphinity
 
 # All tools (including deferred)
 ALL_TOOLS := $(PRIORITY_TOOLS)
@@ -59,6 +59,12 @@ build-flex_ddg:
 		-t $(IMAGE_PREFIX)/flex_ddg:latest \
 		$(REPO_ROOT)
 
+build-graphinity:
+	docker build \
+		-f $(REPO_ROOT)/containers/graphinity/Dockerfile \
+		-t $(IMAGE_PREFIX)/graphinity:latest \
+		$(REPO_ROOT)
+
 # --- Aggregate targets ---
 
 build-all: $(addprefix build-,$(PRIORITY_TOOLS))
@@ -79,6 +85,9 @@ test-proteinmpnn_stability: build-proteinmpnn_stability
 
 test-flex_ddg: build-flex_ddg
 	docker run --rm $(IMAGE_PREFIX)/flex_ddg:latest python -c "import sys; sys.path.insert(0, '/app/tools'); from _common import ToolResult; print('ok')"
+
+test-graphinity: build-graphinity
+	docker run --rm $(IMAGE_PREFIX)/graphinity:latest python -c "import sys; sys.path.insert(0, '/app/tools'); from _common import ToolResult; print('ok')"
 
 test-all: $(addprefix test-,$(PRIORITY_TOOLS))
 

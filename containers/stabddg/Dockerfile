@@ -26,11 +26,13 @@ WORKDIR /app
 # Install PyTorch (CUDA 12.4)
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu124
 
-# Install StaB-ddG
+# Clone StaB-ddG repo (includes run_stabddg.py CLI + model checkpoints)
+RUN git clone --depth 1 https://github.com/LDeng0205/StaB-ddG.git /opt/stabddg
+
+# Install StaB-ddG package + dependencies from the clone
 RUN pip install --no-cache-dir \
     tqdm scipy pandas scikit-learn wandb biopython && \
-    pip install --no-cache-dir \
-    git+https://github.com/LDeng0205/StaB-ddG.git
+    pip install --no-cache-dir /opt/stabddg
 
 # Copy tool scripts (standalone, no autoantibody install needed)
 COPY tools/ ./tools/
@@ -40,3 +42,4 @@ RUN apt-get purge -y gcc g++ python3.12-dev && \
     apt-get autoremove -y
 
 ENV AUTOANTIBODY_CONTAINER=1
+ENV STABDDG_DIR=/opt/stabddg

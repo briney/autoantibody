@@ -18,3 +18,4 @@ RUN pip install --no-cache-dir biopython
 COPY tools/ ./tools/
 
 ENV AUTOANTIBODY_CONTAINER=1
+ENV JAX_PLATFORMS=cpu

@@ -1,42 +1,53 @@
-"""Tests for tools/stabddg_score.py."""
+"""Tests for tools/stabddg_score.py.
+
+Unit tests exercise pure logic (CSV parsing, argument validation) without
+Docker.  Container tests (marked ``container``) exercise the full pipeline
+through the real Docker image — run with ``pytest -m container``.
+"""
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-from autoantibody.models import Mutation
-from tools.stabddg_score import run_stabddg
+import pytest
+
+from tools.stabddg_score import _parse_stabddg_csv
 
 PDB_PATH = Path(__file__).parent / "data" / "1N8Z.pdb"
 
+# Env dict that prevents auto-containerization in subprocess tests.
+_HOST_ENV = {**os.environ, "AUTOANTIBODY_CONTAINER": "1"}
 
-# ── run_stabddg ─────────────────────────────────────────────────────────── #
+
+# ── CSV parsing logic ────────────────────────────────────────────────────── #
 
 
-class TestRunStabddg:
-    def test_calls_predict_ddg_with_correct_args(self) -> None:
-        mutations = [
-            Mutation(chain="H", resnum="52", wt_aa="S", mut_aa="Y"),
-            Mutation(chain="H", resnum="53", wt_aa="G", mut_aa="A"),
-        ]
-        mock_predict = MagicMock(return_value=[0.5, -1.2])
-
-        with patch.dict("sys.modules", {"stabddg": MagicMock(predict_ddg=mock_predict)}):
-            results = run_stabddg(Path("/fake.pdb"), mutations, "HL", "A")
-
-        mock_predict.assert_called_once_with(
-            pdb_file="/fake.pdb",
-            mutations=["SH52Y", "GH53A"],
-            partner_chains=["HL", "A"],
+class TestParseStabddgCsv:
+    def test_extracts_correct_mutation(self, tmp_path: Path) -> None:
+        csv_file = tmp_path / "output.csv"
+        csv_file.write_text(
+            "Name,Mutation,pred_1\ncomplex,EA63Q,-0.31\ncomplex,SH52Y,-0.87\ncomplex,GH53A,0.12\n"
         )
-        assert results == [0.5, -1.2]
+        assert _parse_stabddg_csv(csv_file, "SH52Y") == pytest.approx(-0.87)
+
+    def test_raises_on_missing_mutation(self, tmp_path: Path) -> None:
+        csv_file = tmp_path / "output.csv"
+        csv_file.write_text("Name,Mutation,pred_1\ncomplex,SH52Y,-0.5\n")
+        with pytest.raises(ValueError, match="GH53A"):
+            _parse_stabddg_csv(csv_file, "GH53A")
+
+    def test_raises_on_empty_csv(self, tmp_path: Path) -> None:
+        csv_file = tmp_path / "output.csv"
+        csv_file.write_text("Name,Mutation,pred_1\n")
+        with pytest.raises(ValueError, match="FH54S"):
+            _parse_stabddg_csv(csv_file, "FH54S")
 
 
-# ── CLI validation ───────────────────────────────────────────────────────── #
+# ── CLI argument validation (host-side, no Docker) ───────────────────────── #
 
 
 class TestStabddgCLIValidation:
@@ -53,6 +64,7 @@ class TestStabddgCLIValidation:
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent,
+            env=_HOST_ENV,
         )
         assert result.returncode != 0
         output = json.loads(result.stdout)
@@ -72,6 +84,7 @@ class TestStabddgCLIValidation:
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent,
+            env=_HOST_ENV,
         )
         assert result.returncode != 0
 
@@ -87,6 +100,7 @@ class TestStabddgCLIValidation:
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent,
+            env=_HOST_ENV,
         )
         assert result.returncode != 0
 
@@ -108,7 +122,34 @@ class TestStabddgCLIValidation:
             capture_output=True,
             text=True,
             cwd=Path(__file__).parent.parent,
+            env=_HOST_ENV,
         )
         assert result.returncode != 0
         output = json.loads(result.stdout)
         assert output["status"] == "error"
+
+
+# ── Container integration (exercises real Docker image) ──────────────────── #
+
+
+@pytest.mark.slow
+@pytest.mark.container
+class TestStabddgContainer:
+    """Run stabddg_score.py via auto-containerization (real Docker).
+
+    Requires: ``make -C containers build-stabddg``
+    Run with: ``pytest -m container -k stabddg``
+    """
+
+    def test_score_mutation(self, pdb_1n8z: Path) -> None:
+        from .conftest import run_tool_cli, skip_unless_container
+
+        skip_unless_container("autoantibody/stabddg:latest")
+        data = run_tool_cli(
+            "tools/stabddg_score.py",
+            [str(pdb_1n8z), "B:52:S:Y", "--chains", "AB_C"],
+            timeout=300,
+        )
+        assert data["status"] == "ok"
+        assert "ddg" in data["scores"]
+        assert data["scorer_name"] == "stabddg"
